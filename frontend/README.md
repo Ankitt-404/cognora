@@ -1,5 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## RAG API
+
+The frontend connects to the FastAPI backend at `http://localhost:8000` by default. Set
+`NEXT_PUBLIC_API_URL` in `.env.local` to use a different backend URL. The selected PDF
+is uploaded to `POST /documents`; questions are sent to `POST /chat` in Basic retrieval
+mode or `POST /agent` in Agent mode. The frontend waits for document processing to
+finish and displays the answer and cited source passages returned by the backend.
+
 ## Getting Started
 
 First, run the development server:
