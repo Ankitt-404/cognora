@@ -1,4 +1,5 @@
-from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, UploadFile
+from app.auth import current_user, router as auth_router
 from pydantic import BaseModel, Field
 from app.answer import answer_question
 from app.search import search
@@ -7,9 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.ingestion import create_document, process_document
 from app.memory import create_conversation, load_history, save_turn
 from app.agent import run_agent
-MAX_BYTES = 25 * 1024 * 1024
+MAX_BYTES = 25 * 1024 * 1024    
 
 app = FastAPI()
+app.include_router(auth_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -24,35 +26,35 @@ def home():
 
 
 @app.post("/documents", status_code=202)
-def upload(file: UploadFile, background: BackgroundTasks):
+def upload(file: UploadFile, background: BackgroundTasks, user: str = Depends(current_user)):
     data = file.file.read()
     if len(data) > MAX_BYTES:
         raise HTTPException(413, "File too large (max 25 MB).")
     if not data.startswith(b"%PDF"):
         raise HTTPException(400, "Not a PDF file.")
-    doc_id, status, is_new = create_document(file.filename or "upload.pdf", data)
+    doc_id, status, is_new = create_document(user, file.filename or "upload.pdf", data)
     if is_new:
         background.add_task(process_document, doc_id, data)
     return {"id": doc_id, "status": status}
 
 
 @app.get("/documents")
-def list_documents():
+def list_documents(user : str = Depends(current_user)):
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, title, status, page_count FROM documents ORDER BY id DESC"
+            "SELECT id, title, status, page_count FROM documents ORDER BY id DESC", (user,)
         ).fetchall()
     return [{"id": r[0], "title": r[1], "status": r[2], "pages": r[3]} for r in rows]
 
 
 @app.get("/documents/{doc_id}")
-def get_document(doc_id: int):
+def get_document(doc_id: int, user : str = Depends(current_user)):
     with get_conn() as conn:
         r = conn.execute(
             "SELECT d.id, d.title, d.status, d.error, d.page_count, "
             "(SELECT COUNT(*) FROM chunks WHERE document_id = d.id) "
             "FROM documents d WHERE d.id = %s",
-            (doc_id,),
+            (doc_id,user),
         ).fetchone()
     if not r:
         raise HTTPException(404, "Document not found.")
@@ -66,8 +68,8 @@ class SearchRequest(BaseModel):
 
 
 @app.post("/search")
-def search_endpoint(body: SearchRequest):
-    return search(body.query, body.document_ids, body.k)
+def search_endpoint(body: SearchRequest, user: str = Depends(current_user)):
+    return search(body.query,user, body.document_ids, body.k)
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
@@ -77,15 +79,15 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/chat")
-def chat(body: ChatRequest):
+def chat(body: ChatRequest, user: str =Depends(current_user)):
     if not body.conversation_id:
-        cid = create_conversation(body.question)
+        cid = create_conversation(user,body.question)
         history = []
     else:
         cid = body.conversation_id
-        history = load_history(cid)
-    result = answer_question(body.question, body.document_ids, body.k, history)
-    save_turn(cid, body.question, result["answer"], result["sources"])
+        history = load_history(cid,user)
+    result = answer_question(body.question,user, body.document_ids, body.k, history)
+    save_turn(cid, body.question,user, result["answer"], result["sources"])
     return {"conversation_id": cid, **result}
 
 class AgentRequest(BaseModel):
@@ -95,13 +97,13 @@ class AgentRequest(BaseModel):
 
 
 @app.post("/agent")
-def agent_endpoint(body: AgentRequest):
+def agent_endpoint(body: AgentRequest, user: str = Depends(current_user)):
     if not body.conversation_id:
         cid = create_conversation(body.question)
         history = []
     else:
         cid = body.conversation_id
         history = load_history(cid)
-    result = run_agent(body.question, history, body.document_ids)
-    save_turn(cid, body.question, result["answer"], result["sources"])
+    result = run_agent(body.question, history, body.document_ids,user)
+    save_turn(cid,user, body.question, result["answer"], result["sources"])
     return {"conversation_id": cid, **result}

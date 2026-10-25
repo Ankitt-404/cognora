@@ -2,7 +2,7 @@ import json
 import logging
 
 from app.db import get_conn
-from app.ingestion import OWNER
+
 from app.search import search
 
 log = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ def format_chunks(chunks, registry):
     return "\n\n".join(parts)
 
 
-def read_pages(doc_id, start, end, doc_ids):
+def read_pages(owner, doc_id, start, end, doc_ids):
     if doc_ids and doc_id not in doc_ids:
         return None, "Error: that document is not in scope."
     if end < start or end - start + 1 > MAX_PAGES:
@@ -89,7 +89,7 @@ def read_pages(doc_id, start, end, doc_ids):
             "WHERE d.owner_id = %s AND d.status = 'ready' AND d.id = %s "
             "AND c.page_start <= %s AND c.page_end >= %s "
             "ORDER BY c.chunk_index LIMIT 8",
-            (OWNER, doc_id, end, start),
+            (owner, doc_id, end, start),
         ).fetchall()
     chunks = [
         {
@@ -105,7 +105,7 @@ def read_pages(doc_id, start, end, doc_ids):
         with get_conn() as conn:
               r = conn.execute(
                 "SELECT title, page_count FROM documents WHERE id = %s AND owner_id = %s",
-                (doc_id, OWNER),
+                (doc_id, owner),
             ).fetchone()
         if not r:
             return None, f"Error: document {doc_id} does not exist."
@@ -116,7 +116,7 @@ def read_pages(doc_id, start, end, doc_ids):
     return chunks, None
 
 
-def run_tool(name, raw_args, registry, doc_ids):
+def run_tool(name, raw_args, registry, doc_ids,owner):
     try:
         args = json.loads(raw_args or "{}")
     except json.JSONDecodeError:
@@ -126,10 +126,10 @@ def run_tool(name, raw_args, registry, doc_ids):
             query = str(args.get("query", "")).strip()[:500]
             if not query:
                 return "Error: query is empty."
-            return format_chunks(search(query, doc_ids, 3), registry)
+            return format_chunks(search(owner, query, doc_ids, 3), registry)
         if name == "read_pages":
             chunks, err = read_pages(
-                int(args["document_id"]), int(args["start_page"]), int(args["end_page"]), doc_ids
+                owner, int(args["document_id"]), int(args["start_page"]), int(args["end_page"]), doc_ids
             )
             return err or format_chunks(chunks, registry)
     except Exception:

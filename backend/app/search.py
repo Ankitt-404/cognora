@@ -1,7 +1,7 @@
 import re
 
 from app.db import get_conn
-from app.ingestion import OWNER, get_model
+from app.ingestion import get_model
 
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 CANDIDATES = 20  # results taken from each search before merging
@@ -15,7 +15,7 @@ SCOPE = (
 )
 
 
-def vector_search(conn, query, ids):
+def vector_search(conn, query, ids,owner):
     vec = get_model().encode(QUERY_PREFIX + query, normalize_embeddings=True)
     rows = conn.execute(
         f"SELECT c.id FROM chunks c {SCOPE} ORDER BY c.embedding <=> %(vec)s LIMIT %(n)s",
@@ -24,7 +24,7 @@ def vector_search(conn, query, ids):
     return [r[0] for r in rows]
 
 
-def keyword_search(conn, query, ids):
+def keyword_search(conn, query, ids,owner):
     words = re.findall(r"[A-Za-z0-9]+", query)
     if not words:
         return []
@@ -47,10 +47,10 @@ def fuse(vector_ids, keyword_ids):
     return scores
 
 
-def search(query, ids=None, k=6):
+def search(query,owner, ids=None, k=6):
     with get_conn() as conn:
-        v_ids = vector_search(conn, query, ids)
-        k_ids = keyword_search(conn, query, ids)
+        v_ids = vector_search(conn, query, ids,owner)
+        k_ids = keyword_search(conn, query, ids,owner)
         scores = fuse(v_ids, k_ids)
         top = sorted(scores, key=scores.get, reverse=True)[:k]
         if not top:
@@ -74,4 +74,7 @@ def search(query, ids=None, k=6):
             "found_by": [n for n, lst in (("vector", v_ids), ("keyword", k_ids)) if cid in lst],
             "content": content,
         })
+      
     return results
+
+    
