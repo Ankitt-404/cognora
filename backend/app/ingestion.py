@@ -129,22 +129,22 @@ def chunk_units(units):
         for c in chunks
     ]
 
-def create_document(filename, pdf_bytes):
+def create_document(owner_id, filename, pdf_bytes):
     sha = hashlib.sha256(pdf_bytes).hexdigest()
     title = re.sub(r"\.pdf$", "", filename, flags=re.I)
     with get_conn() as conn:
-        row = conn.execute(
+        existing = conn.execute(
             "SELECT id, status FROM documents WHERE owner_id = %s AND sha256 = %s",
-            (owner, sha),
+            (owner_id, sha),
         ).fetchone()
-        if row and row[1] != "failed":
-            return row[0], row[1], False
-        if row:  # retry a failed upload
-            conn.execute("DELETE FROM documents WHERE id = %s", (row[0],))
+        if existing and existing[1] != "failed":
+            return existing[0], existing[1], False
+        if existing:  # retry a failed upload
+            conn.execute("DELETE FROM documents WHERE id = %s", (existing[0],))
         doc_id = conn.execute(
             "INSERT INTO documents (owner_id, title, filename, sha256) "
             "VALUES (%s, %s, %s, %s) RETURNING id",
-            (owner, title, filename, sha),
+            (owner_id, title, filename, sha),
         ).fetchone()[0]
     return doc_id, "queued", True
 

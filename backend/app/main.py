@@ -39,10 +39,12 @@ def upload(file: UploadFile, background: BackgroundTasks, user: str = Depends(cu
 
 
 @app.get("/documents")
-def list_documents(user : str = Depends(current_user)):
+def list_documents(user: str = Depends(current_user)):
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, title, status, page_count FROM documents ORDER BY id DESC", (user,)
+            "SELECT id, title, status, page_count FROM documents "
+            "WHERE owner_id = %s ORDER BY id DESC",
+            (user,),
         ).fetchall()
     return [{"id": r[0], "title": r[1], "status": r[2], "pages": r[3]} for r in rows]
 
@@ -50,15 +52,22 @@ def list_documents(user : str = Depends(current_user)):
 @app.get("/documents/{doc_id}")
 def get_document(doc_id: int, user : str = Depends(current_user)):
     with get_conn() as conn:
-        r = conn.execute(
+        document = conn.execute(
             "SELECT d.id, d.title, d.status, d.error, d.page_count, "
             "(SELECT COUNT(*) FROM chunks WHERE document_id = d.id) "
-            "FROM documents d WHERE d.id = %s",
+            "FROM documents d WHERE d.id = %s AND d.owner_id=%s",
             (doc_id,user),
         ).fetchone()
-    if not r:
-        raise HTTPException(404, "Document not found.")
-    return {"id": r[0], "title": r[1], "status": r[2], "error": r[3], "pages": r[4], "chunks": r[5]}
+        if not document:
+            raise HTTPException(404, "Document not found.")
+        return {
+        "id": document[0],
+        "title": document[1],
+        "status": document[2],
+        "error": document[3],
+        "pages": document[4],
+        "chunks": document[5],
+    }
 
 
 class SearchRequest(BaseModel):

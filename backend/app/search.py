@@ -19,7 +19,7 @@ def vector_search(conn, query, ids,owner):
     vec = get_model().encode(QUERY_PREFIX + query, normalize_embeddings=True)
     rows = conn.execute(
         f"SELECT c.id FROM chunks c {SCOPE} ORDER BY c.embedding <=> %(vec)s LIMIT %(n)s",
-        {"owner": OWNER, "ids": ids, "vec": vec, "n": CANDIDATES},
+        {"owner": owner, "ids": ids, "vec": vec, "n": CANDIDATES},
     ).fetchall()
     return [r[0] for r in rows]
 
@@ -33,7 +33,7 @@ def keyword_search(conn, query, ids,owner):
         f"SELECT c.id FROM chunks c {SCOPE} "
         "AND c.content_tsv @@ to_tsquery('english', %(q)s) "
         "ORDER BY ts_rank_cd(c.content_tsv, to_tsquery('english', %(q)s)) DESC LIMIT %(n)s",
-        {"owner": OWNER, "ids": ids, "q": tsq, "n": CANDIDATES},
+        {"owner": owner, "ids": ids, "q": tsq, "n": CANDIDATES},
     ).fetchall()
     return [r[0] for r in rows]
 
