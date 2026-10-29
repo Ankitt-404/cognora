@@ -4,14 +4,18 @@ from collections import Counter
 
 import fitz  # PyMuPDF
 from sentence_transformers import SentenceTransformer
-
+from fastapi import HTTPException
 from app.db import get_conn
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 MAX_TOKENS = 300       # chunk size target (model limit is 512)
 MIN_TOKENS = 60        # don't start a new section for a chunk smaller than this
 OVERLAP_TOKENS = 50
-
+MAX_DOCS_PER_USER = 5
+MAX_PAGES = 5
+def count_pages(pdf_bytes):
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf_file:
+        return pdf_file.page_count
 
 _model = None
 
@@ -141,6 +145,15 @@ def create_document(owner_id, filename, pdf_bytes):
             return existing[0], existing[1], False
         if existing:  # retry a failed upload
             conn.execute("DELETE FROM documents WHERE id = %s", (existing[0],))
+
+        document_total = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE owner_id = %s", (owner_id,)
+        ).fetchone()[0]
+        if document_total >= MAX_DOCS_PER_USER:
+            raise HTTPException(
+                400, f"Document limit reached ({MAX_DOCS_PER_USER}). Delete one first."
+            )
+
         doc_id = conn.execute(
             "INSERT INTO documents (owner_id, title, filename, sha256) "
             "VALUES (%s, %s, %s, %s) RETURNING id",

@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from psycopg.types.json import Jsonb
-
+import psycopg
 from app.db import get_conn
 
 
@@ -43,7 +43,7 @@ def load_history(conversation_id,owner, limit=6):
     return history
 
 
-def save_turn(conversation_id, question,owner, answer, sources):
+def _save_turn_once(conversation_id, owner, question, answer, sources):
     with get_conn() as conn:
         _check_owner(conn, conversation_id, owner)
         conn.execute(
@@ -55,3 +55,11 @@ def save_turn(conversation_id, question,owner, answer, sources):
             "VALUES (%s, 'assistant', %s, %s)",
             (conversation_id, answer, Jsonb(sources)),
         )
+
+
+def save_turn(conversation_id, owner, question, answer, sources):
+    try:
+        _save_turn_once(conversation_id, owner, question, answer, sources)
+    except psycopg.OperationalError:
+        # Neon dropped the connection: open a fresh one and try once more
+        _save_turn_once(conversation_id, owner, question, answer, sources)

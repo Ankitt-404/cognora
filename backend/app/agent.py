@@ -53,7 +53,7 @@ def add_usage(totals, usage):
         totals["total"] += usage.total_tokens
 
 
-def run_agent(question, history, doc_ids=None):
+def run_agent(question, history, doc_ids, owner):
     registry = SourceRegistry()
     messages = [{"role": "system", "content": AGENT_SYSTEM}]
     messages += [{"role": m["role"], "content": m["content"]} for m in history]
@@ -84,8 +84,8 @@ def run_agent(question, history, doc_ids=None):
             if i >= MAX_CALLS_PER_STEP:
                 result = "Error: too many tool calls in one step."
             else:
-                result = run_tool(t.function.name, t.function.arguments, registry, doc_ids)
-            steps.append({
+                result = run_tool(t.function.name, t.function.arguments, registry, doc_ids, owner)
+                steps.append({
                 "tool": t.function.name,
                 "arguments": t.function.arguments,
                 "result_chars": len(result),
@@ -94,7 +94,7 @@ def run_agent(question, history, doc_ids=None):
 
     text = (msg.content or "").strip() or "I could not finish an answer within the step limit."
     if "<tool_call>" in text or "<function=" in text:
-        fallback = answer_question(question, doc_ids, 3, history)
+        fallback = answer_question(question, owner, doc_ids, 3, history)
         fallback["note"] = "Agent output was malformed; answered with the basic pipeline."
         fallback["steps"] = steps
         return fallback

@@ -1,8 +1,10 @@
 'use client'
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { API, TOKEN_KEY, responseMessage } from './api'
 
-const API = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000').replace(/\/$/, '')
+
 const MAX_FILE_BYTES = 25 * 1024 * 1024
 
 type DocumentStatus = 'queued' | 'processing' | 'ready' | 'failed'
@@ -52,19 +54,7 @@ function isAnswerResponse(value: unknown): value is Answer & { conversation_id?:
   )
 }
 
-function responseMessage(body: unknown, fallback: string) {
-  if (body && typeof body === 'object' && 'detail' in body) {
-    const detail = body.detail
-    if (typeof detail === 'string') return detail
-    if (Array.isArray(detail)) {
-      return detail
-        .map((item) => item && typeof item === 'object' && 'msg' in item ? item.msg : '')
-        .filter((message): message is string => typeof message === 'string' && message.length > 0)
-        .join(', ') || fallback
-    }
-  }
-  return fallback
-}
+
 
 function Mark() {
   return (
@@ -100,7 +90,7 @@ function ArrowIcon() {
   )
 }
 
-export default function App() {
+function Workspace({ token, onLogout }: { token: string; onLogout: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const uploadRequest = useRef(0)
   const hasInitializedSelection = useRef(false)
@@ -116,20 +106,34 @@ export default function App() {
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [mode, setMode] = useState<'agent' | 'basic'>('agent')
 
+    const authedFetch = useCallback(
+    async (path: string, options: RequestInit = {}) => {
+      const headers = new Headers(options.headers)
+      headers.set('Authorization', `Bearer ${token}`)
+      const response = await fetch(`${API}${path}`, { ...options, headers })
+      if (response.status === 401) onLogout()
+      return response
+    },
+    [token, onLogout],
+  )
+
   const refreshDocuments = useCallback(async () => {
-    const response = await fetch(`${API}/documents`)
+    
+    
+    const response = await authedFetch('/documents')
     const result: unknown = await response.json()
     if (!response.ok) throw new Error(responseMessage(result, 'Could not load uploaded documents.'))
     if (!Array.isArray(result) || !result.every(isDocument)) {
       throw new Error('The document service returned an invalid document list.')
     }
+    
     setDocuments(result)
     setDocumentsError('')
     if (!hasInitializedSelection.current) {
       hasInitializedSelection.current = true
       setSelectedDocumentId(result.find((document) => document.status === 'ready')?.id ?? result[0]?.id ?? null)
     }
-  }, [])
+  }, [authedFetch])
 
   useEffect(() => {
     let cancelled = false
@@ -148,6 +152,7 @@ export default function App() {
       cancelled = true
     }
   }, [refreshDocuments])
+  
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0]
@@ -172,7 +177,7 @@ export default function App() {
     const body = new FormData()
     body.append('file', nextFile)
     try {
-      const response = await fetch(`${API}/documents`, { method: 'POST', body })
+      const response = await authedFetch('/documents', { method: 'POST', body })
       const result: unknown = await response.json()
       if (requestId !== uploadRequest.current) return
       if (!response.ok) throw new Error(responseMessage(result, 'Upload failed.'))
@@ -230,13 +235,12 @@ export default function App() {
     event.preventDefault()
     const trimmedQuestion = question.trim()
     if (selectedDocumentId === null || selectedDocument?.status !== 'ready' || !trimmedQuestion || isAsking) return
-
+      
     setIsAsking(true)
     setAnswer(null)
     setAnswerError('')
     try {
-      const response = await fetch(`${API}/${mode === 'agent' ? 'agent' : 'chat'}`, {
-        method: 'POST',
+const response = await authedFetch(`/${mode === 'agent' ? 'agent' : 'chat'}`, {        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: trimmedQuestion,
@@ -245,6 +249,7 @@ export default function App() {
         }),
       })
       const result: unknown = await response.json()
+      if (response.status === 404) setConversationId(null)
       if (!response.ok) throw new Error(responseMessage(result, 'Could not get an answer.'))
       if (!isAnswerResponse(result)) {
         throw new Error('The answer service returned an invalid response.')
@@ -268,7 +273,13 @@ export default function App() {
             <span className="grid size-8 place-items-center rounded-full bg-[#c9f27b] text-[#10120d]"><Mark /></span>
             <span className="text-[17px] font-medium tracking-[-0.03em]">cognora</span>
           </div>
-          <span className="hidden text-xs tracking-wide text-white/35 sm:block">private document intelligence</span>
+          <button
+  type="button"
+  onClick={onLogout}
+  className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/50 transition hover:text-white"
+>
+  Log out
+</button>
         </header>
 
         <section className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-[0.82fr_1.18fr] lg:gap-20 lg:py-16">
@@ -497,4 +508,32 @@ export default function App() {
       </div>
     </main>
   )
+}
+
+
+export default function App() {
+  const router = useRouter()
+  const [token, setToken] = useState<string | null>(null)
+  const [isCheckingStorage, setIsCheckingStorage] = useState(true)
+
+  useEffect(() => {
+    let savedToken: string | null = null
+    try {
+      savedToken = sessionStorage.getItem(TOKEN_KEY)
+    } catch {
+      // storage unavailable: send the user to sign in
+    }
+    if (savedToken) setToken(savedToken)
+    else router.replace('/login')
+    setIsCheckingStorage(false)
+  }, [router])
+
+  const handleLogout = useCallback(() => {
+    try { sessionStorage.removeItem(TOKEN_KEY) } catch {}
+    setToken(null)
+    router.replace('/login')
+  }, [router])
+
+  if (isCheckingStorage || !token) return null
+  return <Workspace token={token} onLogout={handleLogout} />
 }

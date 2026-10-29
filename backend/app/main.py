@@ -5,18 +5,30 @@ from app.answer import answer_question
 from app.search import search
 from app.db import get_conn
 from fastapi.middleware.cors import CORSMiddleware
-from app.ingestion import create_document, process_document
+
 from app.memory import create_conversation, load_history, save_turn
 from app.agent import run_agent
+from app.ingestion import MAX_PAGES, count_pages, create_document, process_document
 MAX_BYTES = 25 * 1024 * 1024    
 
 app = FastAPI()
 app.include_router(auth_router)
+import os
+
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -32,6 +44,14 @@ def upload(file: UploadFile, background: BackgroundTasks, user: str = Depends(cu
         raise HTTPException(413, "File too large (max 25 MB).")
     if not data.startswith(b"%PDF"):
         raise HTTPException(400, "Not a PDF file.")
+
+    try:
+        page_total = count_pages(data)
+    except Exception:
+        raise HTTPException(400, "Could not read this PDF.")
+    if page_total > MAX_PAGES:
+        raise HTTPException(413, f"Too many pages (max {MAX_PAGES}).")
+
     doc_id, status, is_new = create_document(user, file.filename or "upload.pdf", data)
     if is_new:
         background.add_task(process_document, doc_id, data)
@@ -88,31 +108,29 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/chat")
-def chat(body: ChatRequest, user: str =Depends(current_user)):
+def chat(body: ChatRequest, user: str = Depends(current_user)):
     if not body.conversation_id:
-        cid = create_conversation(user,body.question)
+        conversation_id = create_conversation(user, body.question)
         history = []
     else:
-        cid = body.conversation_id
-        history = load_history(cid,user)
-    result = answer_question(body.question,user, body.document_ids, body.k, history)
-    save_turn(cid, body.question,user, result["answer"], result["sources"])
-    return {"conversation_id": cid, **result}
+        conversation_id = body.conversation_id
+        history = load_history(conversation_id, user)
+    result = answer_question(body.question, user, body.document_ids, body.k, history)
+    save_turn(conversation_id, user, body.question, result["answer"], result["sources"])
+    return {"conversation_id": conversation_id, **result}
 
 class AgentRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     document_ids: list[int] | None = None
     conversation_id: int | None = None
-
-
 @app.post("/agent")
 def agent_endpoint(body: AgentRequest, user: str = Depends(current_user)):
     if not body.conversation_id:
-        cid = create_conversation(body.question)
+        conversation_id = create_conversation(user, body.question)
         history = []
     else:
-        cid = body.conversation_id
-        history = load_history(cid)
-    result = run_agent(body.question, history, body.document_ids,user)
-    save_turn(cid,user, body.question, result["answer"], result["sources"])
-    return {"conversation_id": cid, **result}
+        conversation_id = body.conversation_id
+        history = load_history(conversation_id, user)
+    result = run_agent(body.question, history, body.document_ids, user)
+    save_turn(conversation_id, user, body.question, result["answer"], result["sources"])
+    return {"conversation_id": conversation_id, **result}
