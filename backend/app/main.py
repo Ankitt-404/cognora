@@ -11,7 +11,12 @@ from app.agent import run_agent
 from app.ingestion import MAX_PAGES, count_pages, create_document, process_document
 MAX_BYTES = 25 * 1024 * 1024    
 
-app = FastAPI()
+IS_PRODUCTION = os.environ.get("APP_ENV") == "production"
+app = FastAPI(
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None,
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
 app.include_router(auth_router)
 import os
 
