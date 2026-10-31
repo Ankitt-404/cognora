@@ -5,7 +5,7 @@ from app.answer import answer_question
 from app.search import search
 from app.db import get_conn
 from fastapi.middleware.cors import CORSMiddleware
-
+import os
 from app.memory import create_conversation, load_history, save_turn
 from app.agent import run_agent
 from app.ingestion import MAX_PAGES, count_pages, create_document, process_document
@@ -18,7 +18,7 @@ app = FastAPI(
     openapi_url=None if IS_PRODUCTION else "/openapi.json",
 )
 app.include_router(auth_router)
-import os
+
 
 ALLOWED_ORIGINS = [
     origin.strip()
