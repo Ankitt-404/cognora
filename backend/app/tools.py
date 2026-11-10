@@ -126,7 +126,7 @@ def run_tool(name, raw_args, registry, doc_ids,owner):
             query = str(args.get("query", "")).strip()[:500]
             if not query:
                 return "Error: query is empty."
-            return format_chunks(search(owner, query, doc_ids, 3), registry)
+            return format_chunks(search(owner, query, doc_ids, 3,expand=True), registry)
         if name == "read_pages":
             chunks, err = read_pages(
                 owner, int(args["document_id"]), int(args["start_page"]), int(args["end_page"]), doc_ids

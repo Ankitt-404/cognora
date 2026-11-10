@@ -99,11 +99,12 @@ class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     document_ids: list[int] | None = None
     k: int = Field(default=6, ge=1, le=20)
+    expand: bool =False
 
 
 @app.post("/search")
 def search_endpoint(body: SearchRequest, user: str = Depends(current_user)):
-    return search(body.query,user, body.document_ids, body.k)
+    return search(body.query,user, body.document_ids, body.k, expand=body.expand)
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)

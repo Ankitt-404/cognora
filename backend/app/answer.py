@@ -72,9 +72,9 @@ def rewrite_question(question, history):
     return text if text and len(text) < 500 else question
 
 
-def answer_question(question, owner, ids=None, k=3, history=None):
+def answer_question(question, owner, ids=None, k=6, history=None):
     standalone = rewrite_question(question, history or [])
-    hits = search(standalone, owner, ids, k)
+    hits = search(standalone, owner, ids, k, expand = True)
     if not hits:
         return {
             "answer": "No matching content found. Upload a document first.",

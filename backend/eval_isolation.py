@@ -59,12 +59,12 @@ def main():
     for caller, other_documents in pairs:
         for question in questions:
             # 1) Normal search: the caller must only ever get their own chunks.
-            normal_results = search(question, caller, None, TOP_K)
+            normal_results = search(question, caller, None, TOP_K,expand=True)
             chunks_checked += len(normal_results)
             normal_leaks += len(leaked_chunk_ids(caller, normal_results))
 
             # 2) Targeted search: the caller names the OTHER user's document ids.
-            targeted_results = search(question, caller, other_documents, TOP_K)
+            targeted_results = search(question, caller, other_documents, TOP_K, expand=True)
             chunks_checked += len(targeted_results)
             targeted_leaks += len(leaked_chunk_ids(caller, targeted_results))
 

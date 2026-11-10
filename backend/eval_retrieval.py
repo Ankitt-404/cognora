@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 from app.search import search
-
+OWNER_ID = "b7306d90-fe1b-4e6f-91c8-2c2761ce4c73"
 K = 10
 cases = json.loads((Path(__file__).parent / "tests" / "questions.json").read_text(encoding="utf-8"))
 
@@ -13,15 +13,15 @@ def norm(s):
 
 
 ranks = []
-for c in cases:
+for case in cases:
     rank = None
-    for i, r in enumerate(search(c["question"], None, K), 1):
-        text = norm(r["content"])
-        if all(norm(t) in text for t in c["must_contain"]):
-            rank = i
+    for rank, result in enumerate(search(case["question"], OWNER_ID, None, K), 1):
+        text = norm(result["content"])
+        if all(norm(t) in text for t in case["must_contain"]):
+                
             break
     ranks.append(rank)
-    print(f"[{rank if rank else 'MISS':>4}] {c['question']}")
+    print(f"[{rank if rank else 'MISS':>4}] {case['question']}")
 
 n = len(ranks)
 print()
