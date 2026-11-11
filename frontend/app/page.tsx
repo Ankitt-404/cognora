@@ -105,6 +105,8 @@ function Workspace({ token, onLogout }: { token: string; onLogout: () => void })
   const [isAsking, setIsAsking] = useState(false)
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [mode, setMode] = useState<'agent' | 'basic'>('agent')
+  const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null)
+const [isDeleting, setIsDeleting] = useState(false)
 
     const authedFetch = useCallback(
     async (path: string, options: RequestInit = {}) => {
@@ -201,6 +203,30 @@ function Workspace({ token, onLogout }: { token: string; onLogout: () => void })
       if (requestId === uploadRequest.current) setIsUploading(false)
     }
   }
+  const confirmDelete = async () => {
+  if (!documentToDelete) return
+  setIsDeleting(true)
+  try {
+    const response = await authedFetch(`/documents/${documentToDelete.id}`, { method: 'DELETE' })
+    if (!response.ok) {
+      const result: unknown = await response.json().catch(() => null)
+      throw new Error(responseMessage(result, 'Could not delete the document.'))
+    }
+    if (selectedDocumentId === documentToDelete.id) {
+      setSelectedDocumentId(null)
+      setConversationId(null)
+      setQuestion('')
+      setAnswer(null)
+      setAnswerError('')
+    }
+    await refreshDocuments()
+  } catch (error) {
+    setDocumentsError(error instanceof Error ? error.message : 'Could not delete the document.')
+  } finally {
+    setIsDeleting(false)
+    setDocumentToDelete(null)
+  }
+}
 
   const startNewChat = () => {
     hasInitializedSelection.current = true
@@ -326,6 +352,7 @@ const response = await authedFetch(`/${mode === 'agent' ? 'agent' : 'chat'}`, { 
                   New chat
                 </button>
               </div>
+              
 
               <input ref={inputRef} type="file" accept="application/pdf,.pdf" onChange={handleFile} disabled={isAsking || isUploading} className="sr-only" />
               <div>
@@ -338,7 +365,16 @@ const response = await authedFetch(`/${mode === 'agent' ? 'agent' : 'chat'}`, { 
                     {documents.map((document) => {
                       const selected = selectedDocumentId === document.id
                       return (
-                        <li key={document.id}>
+                        <li key={document.id} className="flex items-center gap-2">
+                          <button
+                          type="button"
+                       disabled={isAsking}
+                             onClick={() => setDocumentToDelete(document)}
+                           aria-label={`Delete ${document.title}`}
+                             title="Delete"
+                              className="shrink-0 rounded-lg border border-white/10 px-2.5 py-2 text-xs text-white/40 transition hover:border-red-300/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+> 🗑
+</button>
                           <button
                             type="button"
                             aria-pressed={selected}
@@ -506,6 +542,44 @@ const response = await authedFetch(`/${mode === 'agent' ? 'agent' : 'chat'}`, { 
           <span>Read less. Understand more.</span>
         </footer>
       </div>
+      {documentToDelete && (
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="delete-title"
+    className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-5"
+    onClick={() => !isDeleting && setDocumentToDelete(null)}
+  >
+    <div
+      className="w-full max-w-sm rounded-[22px] border border-white/10 bg-[#171919] p-6 shadow-2xl shadow-black/50"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <h2 id="delete-title" className="text-base font-medium">Delete document?</h2>
+      <p className="mt-2 text-sm leading-6 text-white/50">
+        <span className="text-white/75">{documentToDelete.title}</span> and its indexed text
+        will be permanently removed. This cannot be undone.
+      </p>
+      <div className="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          disabled={isDeleting}
+          onClick={() => setDocumentToDelete(null)}
+          className="rounded-lg border border-white/10 px-4 py-2 text-xs text-white/60 transition hover:text-white disabled:opacity-40"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={isDeleting}
+          onClick={() => void confirmDelete()}
+          className="rounded-lg bg-red-400 px-4 py-2 text-xs font-medium text-neutral-950 transition hover:bg-red-300 disabled:opacity-40"
+        >
+          {isDeleting ? 'Deleting…' : 'Delete'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </main>
   )
 }

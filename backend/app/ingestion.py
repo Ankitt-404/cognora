@@ -12,7 +12,7 @@ MAX_TOKENS = 300       # chunk size target (model limit is 512)
 MIN_TOKENS = 60        # don't start a new section for a chunk smaller than this
 OVERLAP_TOKENS = 50
 MAX_DOCS_PER_USER = 5
-MAX_PAGES = 5
+MAX_PAGES = 25
 def count_pages(pdf_bytes):
     with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf_file:
         return pdf_file.page_count

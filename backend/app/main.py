@@ -140,3 +140,13 @@ def agent_endpoint(body: AgentRequest, user: str = Depends(current_user)):
     result = run_agent(body.question, history, body.document_ids, user)
     save_turn(conversation_id, user, body.question, result["answer"], result["sources"])
     return {"conversation_id": conversation_id, **result}
+
+@app.delete("/documents/{doc_id}", status_code=204)
+def delete_document(doc_id: int, user: str = Depends(current_user)):
+    with get_conn() as connection:
+        deleted_row = connection.execute(
+            "DELETE FROM documents WHERE id = %s AND owner_id = %s RETURNING id",
+            (doc_id, user),
+        ).fetchone()
+    if deleted_row is None:
+        raise HTTPException(404, "Document not found")
